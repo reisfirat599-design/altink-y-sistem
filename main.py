@@ -4,9 +4,8 @@ from datetime import datetime
 import os
 import math
 import requests
-import time
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="6.0")
+app = FastAPI(title="Altınköy Otonom Sistem", version="6.1")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -44,7 +43,7 @@ DYNAMIC_QRS = {
 STAFF_LIST = [
     {"id": 1, "name": "Onur Yılmaz", "title": "Saha Sorumlusu & Operasyon Amiri", "lat": 39.9334, "lon": 32.8597, "phone": "0537 939 36 77", "zone": "Köy Meydanı"},
     {"id": 2, "name": "Fırat Reis", "title": "Güvenlik & Değirmenler Sorumlusu", "lat": 39.9360, "lon": 32.8520, "phone": "0553 691 57 52", "zone": "Yel ve Su Değirmenleri"},
-    {"id": 3, "name": "Ayşe Kaya", "title": "Çantı Evler & Zanaat Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 61 72", "zone": "Geleneksel Çantı Evler"}
+    {"id": 3, "name": "Hakan Taşkale", "title": "Çantı Evler & Zanaat Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 61 72", "zone": "Geleneksel Çantı Evler"}
 ]
 
 PARK_ZONES = {
@@ -83,12 +82,10 @@ def find_nearest_zone(lat: float, lon: float) -> str:
 def ask_groq_ai(prompt: str, lat: float = None, lon: float = None) -> str:
     p_lower = prompt.lower()
     
-    # Küfür / Hakaret filtresi kontrolü
     yasakli_kelimeler = ["salak", "aptal", "mal", "rezil", "pis", "idiot", "gerizekalı"]
     if any(y in p_lower for y in yasakli_kelimeler):
         return "Müze rehberi olarak bu üslubu kesinlikle kabul etmiyor ve reddediyorum. Lütfen saygılı bir iletişim kurunuz."
 
-    # Konum sorma sorguları kontrolü
     konum_sorulari = ["neredeyim", "konumum", "burası neresi", "neredeyiz", "hangi bölgedeyim", "konumum neresi"]
     if any(k in p_lower for k in konum_sorulari):
         if lat is not None and lon is not None:
@@ -182,7 +179,10 @@ def logout():
     return response
 
 @app.get("/visitor-home", response_class=HTMLResponse)
-def visitor_home():
+def visitor_home(kvkk_session: str = Cookie(None)):
+    if kvkk_session != "onayli":
+        return RedirectResponse(url="/", status_code=303)
+        
     return """
     <html>
         <head><title>Altınköy Ziyaretçi Asistanı</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -277,7 +277,10 @@ def update_qr(code_id: str = Form(...), new_url: str = Form(...)):
     return RedirectResponse(url="/qr-manager", status_code=303)
 
 @app.get("/r/{code_id}")
-def redirect_dynamic_qr(code_id: str):
+def redirect_dynamic_qr(code_id: str, kvkk_session: str = Cookie(None)):
+    if kvkk_session != "onayli":
+        return RedirectResponse(url="/", status_code=303)
+
     if code_id in DYNAMIC_QRS:
         qr_info = DYNAMIC_QRS[code_id]
         heatmap_data.append({
@@ -291,7 +294,9 @@ def redirect_dynamic_qr(code_id: str):
     return RedirectResponse(url="/visitor-home", status_code=303)
 
 @app.get("/uyari/degirmen-bolgesi", response_class=HTMLResponse)
-def degirmen_uyari_page():
+def degirmen_uyari_page(kvkk_session: str = Cookie(None)):
+    if kvkk_session != "onayli":
+        return RedirectResponse(url="/", status_code=303)
     return """
     <html>
         <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Altınköy - Değirmen & Dere Bölgesi Kuralları</title></head>
@@ -368,7 +373,9 @@ def wa_post(sender: str = Form(...), message: str = Form(...)):
     return RedirectResponse(url="/whatsapp-sim", status_code=303)
 
 @app.get("/visitor-portal", response_class=HTMLResponse)
-def visitor_portal():
+def visitor_portal(kvkk_session: str = Cookie(None)):
+    if kvkk_session != "onayli":
+        return RedirectResponse(url="/", status_code=303)
     return """
     <html>
         <head>
@@ -434,7 +441,9 @@ def emergency_form(lat: float = Form(39.9334), lon: float = Form(32.8597)):
     """
 
 @app.get("/survey", response_class=HTMLResponse)
-def survey_page():
+def survey_page(kvkk_session: str = Cookie(None)):
+    if kvkk_session != "onayli":
+        return RedirectResponse(url="/", status_code=303)
     return f"""
     <html>
         <head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -468,7 +477,9 @@ def submit_survey(score: int = Form(...), comment: str = Form("")):
     return RedirectResponse(url="/visitor-home", status_code=303)
 
 @app.get("/qr-chat", response_class=HTMLResponse)
-def qr_chat_get():
+def qr_chat_get(kvkk_session: str = Cookie(None)):
+    if kvkk_session != "onayli":
+        return RedirectResponse(url="/", status_code=303)
     chat_history = "".join([f"<div style='margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:8px;'><b>Ziyaretçi:</b> {q['msg']}<br><div style='background:#eef2f7; padding:8px; border-radius:6px; margin-top:4px;'><b>Asistan:</b> {q['reply']}</div><button onclick=\"speakText('{q['reply']}')\" style='margin-top:5px; background:#27ae60; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;'>🔊 Sesli Dinle</button></div>" for q in reversed(qr_requests)])
     return f"""
     <html>
