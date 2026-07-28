@@ -6,8 +6,13 @@ import shutil
 import os
 import math
 import io
+import requests
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="3.4.0")
+app = FastAPI(title="Altınköy Otonom Sistem", version="3.9.0")
+
+# Groq API Entegrasyonu
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "BURAYA_GROQ_API_KEY_GIRINIZ")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -16,14 +21,53 @@ whatsapp_feed = []
 incident_logs = []
 qr_requests = []
 
+# Güncel Personel Listesi (Onur Yılmaz ve Saha Kadrosu)
 STAFF_LIST = [
-    {"id": 1, "name": "Ahmet Yılmaz", "title": "Saha Amiri", "lat": 39.9334, "lon": 32.8597, "phone": "0555 111 2233"},
-    {"id": 2, "name": "Mehmet Demir", "title": "Güvenlik Personeli", "lat": 39.9350, "lon": 32.8550, "phone": "0555 222 3344"},
+    {"id": 1, "name": "Onur Yılmaz", "title": "Saha Sorumlusu & Operasyon Amiri", "lat": 39.9334, "lon": 32.8597, "phone": "0555 111 2233"},
+    {"id": 2, "name": "Ahmet Demir", "title": "Güvenlik Personeli", "lat": 39.9350, "lon": 32.8550, "phone": "0555 222 3344"},
     {"id": 3, "name": "Ayşe Kaya", "title": "Peyzaj Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0555 333 4455"}
 ]
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     return math.sqrt((lat1 - lat2)*2 + (lon1 - lon2)*2)
+
+def ask_groq_ai(prompt: str) -> str:
+    """ Groq API üzerinden park asistanı için akıllı yanıt üretir """
+    if GROQ_API_KEY == "BURAYA_GROQ_API_KEY_GIRINIZ" or not GROQ_API_KEY:
+        p_lower = prompt.lower()
+        if "tuvalet" in p_lower or "lavabo" in p_lower:
+            return "En yakın tuvalet ana meydanın kuzey doğusundadır. Temizlik ekibine bildirildi."
+        elif "çöp" in p_lower or "kirl" in p_lower:
+            return "Çöp bildiriminiz alındı. Temizlik personeli bölgeye yönlendiriliyor."
+        elif "otopark" in p_lower or "araç" in p_lower:
+            return "Otopark düzeni için güvenlik ekibimiz bilgilendirildi."
+        return "Talebiniz alınmıştır. Altınköy yönetim ekibimize iletildi, en kısa sürede ilgilenilecektir."
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "llama3-70b-8192",
+        "messages": [
+            {
+                "role": "system",
+                "content": "Sen 1 milyon metrekarelik Altınköy parkının akıllı yapay zeka asistanısın. Ziyaretçilerin istek, şikayet ve taleplerini dinleyip onlara kibar, yardımsever ve belediye kurallarına uygun şekilde Türkçe yanıtlar veriyorsun."
+            },
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7
+    }
+
+    try:
+        response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=10)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+    except Exception:
+        pass
+    
+    return "Talebiniz kaydedilmiştir, en kısa sürede saha ekiplerimiz ilgilenecektir."
 
 @app.get("/", response_class=HTMLResponse)
 def home_page():
@@ -53,7 +97,7 @@ def home_page():
                 <a class="staff" href="/staff-management">👥 Belediye Çalışanları Kayıt & Yönetimi</a>
                 <a class="whatsapp" href="/whatsapp-sim">📱 WhatsApp Grup Entegrasyon Paneli</a>
                 <a class="emergency" href="/visitor-portal">🚶 Ziyaretçi Acil Durum / QR Portalı</a>
-                <a class="qrchat" href="/qr-chat">🎤 Park Direkleri AI Sesli Asistan (QR)</a>
+                <a class="qrchat" href="/qr-chat">🎤 Park Direkleri Groq AI Asistanı (QR)</a>
                 <a class="dashboard" href="/live-dashboard">📊 Müdürlük Canlı Rapor & Takip</a>
             </div>
         </body>
@@ -62,15 +106,7 @@ def home_page():
 
 @app.get("/staff-management", response_class=HTMLResponse)
 def staff_management_page():
-    staff_rows = ""
-    for s in STAFF_LIST:
-        staff_rows += f"""
-        <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 10px; text-align: left;"><b>{s['name']}</b><br><span style="font-size:12px; color:#7f8c8d;">{s['title']}</span></td>
-            <td style="padding: 10px;">{s['phone']}</td>
-            <td style="padding: 10px; font-size: 12px; color:#555;">Lat: {s['lat']}<br>Lon: {s['lon']}</td>
-        </tr>
-        """
+    staff_rows = "".join([f"<tr style='border-bottom: 1px solid #eee;'><td style='padding:10px; text-align:left;'><b>{s['name']}</b><br><span style='font-size:12px; color:gray;'>{s['title']}</span></td><td style='padding:10px;'>{s['phone']}</td></tr>" for s in STAFF_LIST])
     return f"""
     <html>
         <head><title>Personel Yönetimi</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -106,7 +142,7 @@ def whatsapp_sim_page():
             <div style="max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px;">
                 <h2>💬 WhatsApp Grup Akışı</h2>
                 <form action="/api/whatsapp-post" method="POST">
-                    <input type="text" name="sender" value="Fatih Amir" required style="width: 100%; padding: 10px; margin: 5px 0 12px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+                    <input type="text" name="sender" value="Onur Yılmaz (Amir)" required style="width: 100%; padding: 10px; margin: 5px 0 12px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
                     <input type="text" name="message" placeholder="Mesajınız..." required style="width: 100%; padding: 10px; margin: 5px 0 12px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
                     <button type="submit" style="background: #128c7e; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: bold;">Gönder</button>
                 </form>
@@ -164,7 +200,7 @@ def qr_chat_page():
     return """
     <html>
         <head>
-            <title>Altınköy Park Asistanı</title>
+            <title>Altınköy Park Groq AI Asistanı</title>
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #fdfbf7; margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; height: 100vh; box-sizing: border-box; }
@@ -177,69 +213,21 @@ def qr_chat_page():
                 .chat-input-area { padding: 15px; background: white; border-top: 1px solid #eee; display: flex; gap: 8px; align-items: center; }
                 input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; outline: none; font-size: 14px; box-sizing: border-box; }
                 button { background: #d35400; color: white; border: none; padding: 12px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; }
-                .mic-btn { background: #27ae60; }
             </style>
         </head>
         <body>
             <div class="chat-container">
-                <div class="chat-header">🌾 Altınköy Park 7/24 AI Asistanı</div>
+                <div class="chat-header">🌾 Altınköy Park Groq AI Asistanı</div>
                 <div id="chatMessages" class="chat-messages">
-                    <div class="message bot">Merhaba! Park direğindeki QR kodu okuttunuz. İstek ve taleplerinizi yazabilir veya konuşarak iletebilirsiniz.</div>
+                    <div class="message bot">Merhaba! Park direğindeki QR kodu okuttunuz. İstek ve taleplerinizi yazarak bana iletebilirsiniz, yapay zeka anında yanıtlayacaktır.</div>
                 </div>
                 <div class="chat-input-area">
-                    <button class="mic-btn" onclick="startVoiceChat()" id="micBtn">🎤 Konuş</button>
-                    <input type="text" id="userInput" placeholder="Talebinizi yazın..." onkeypress="if(event.key === 'Enter') sendMessage()">
+                    <input type="text" id="userInput" placeholder="Talebinizi buraya yazın..." onkeypress="if(event.key === 'Enter') sendMessage()">
                     <button onclick="sendMessage()">Gönder</button>
                 </div>
             </div>
 
             <script>
-                function speakText(text) {
-                    if ('speechSynthesis' in window) {
-                        window.speechSynthesis.cancel(); // Önceki sesleri durdur
-                        const utterance = new SpeechSynthesisUtterance(text);
-                        utterance.lang = 'tr-TR';
-                        window.speechSynthesis.speak(utterance);
-                    }
-                }
-
-                function startVoiceChat() {
-                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                    if (!SpeechRecognition) {
-                        alert("Tarayıcınız ses tanımayı desteklemiyor. Lütfen yazarak iletin.");
-                        return;
-                    }
-                    const recognition = new SpeechRecognition();
-                    recognition.lang = 'tr-TR';
-                    
-                    const micBtn = document.getElementById('micBtn');
-                    const inputEl = document.getElementById('userInput');
-                    
-                    micBtn.style.background = "#c0392b";
-                    micBtn.innerText = "Dinleniyor...";
-                    
-                    recognition.onresult = function(event) {
-                        const transcript = event.results[0][0].transcript;
-                        inputEl.value = transcript;
-                        micBtn.style.background = "#27ae60";
-                        micBtn.innerText = "🎤 Konuş";
-                        sendMessage();
-                    };
-                    
-                    recognition.onerror = function() {
-                        micBtn.style.background = "#27ae60";
-                        micBtn.innerText = "🎤 Konuş";
-                        alert("Ses algılanamadı, lütfen tekrar deneyin.");
-                    };
-                    
-                    recognition.onend = function() {
-                        micBtn.style.background = "#27ae60";
-                        micBtn.innerText = "🎤 Konuş";
-                    };
-                    
-                    recognition.start();
-                }
-
                 function sendMessage() {
                     const inputEl = document.getElementById('userInput');
                     const text = inputEl.value.trim();
@@ -257,9 +245,8 @@ def qr_chat_page():
                     }).then(res => res.json()).then(data => {
                         chatMessages.innerHTML += <div class="message bot">${data.reply}</div>;
                         chatMessages.scrollTop = chatMessages.scrollHeight;
-                        speakText(data.reply);
                     }).catch(() => {
-                        chatMessages.innerHTML += <div class="message bot">Sunucuya bağlanırken bir hata oluştu.</div>;
+                        chatMessages.innerHTML += <div class="message bot">Sunucu ile iletişim kurulurken hata oluştu.</div>;
                     });
                 }
             </script>
@@ -271,13 +258,8 @@ def qr_chat_page():
 def qr_chat_submit(data: dict):
     user_msg = data.get("message", "")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    reply = "Talebiniz alınmıştır. En kısa sürede ilgili saha ekibimize yönlendirilecektir."
-    msg_l = user_msg.lower()
     
-    if "tuvalet" in msg_l or "lavabo" in msg_l: reply = "En yakın tuvalet ana meydanın kuzey doğusundadır. Temizlik ekibine bildirildi."
-    elif "çöp" in msg_l or "kirl" in msg_l: reply = "Çöp bildiriminiz alındı. Temizlik personeli bölgeye yönlendiriliyor."
-    elif "otopark" in msg_l or "araç" in msg_l: reply = "Otopark düzeni için güvenlik ekibimiz bilgilendirildi."
-    elif "su" in msg_l or "çeşme" in msg_l: reply = "Su hatları ile ilgili bakım talebiniz peyzaj ekibine iletildi."
+    reply = ask_groq_ai(user_msg)
 
     qr_requests.append({"time": timestamp, "message": user_msg, "ai_reply": reply})
     return {"status": "success", "reply": reply}
@@ -303,10 +285,10 @@ def live_dashboard():
         <body style="font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background: #f8f9fa;">
             <div style="max-width: 700px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
                 <h2 style="color: #2c3e50;">📊 Müdürlük Rapor Ekranı</h2>
-                <h3 style="color: #d35400;">🎤 QR Asistan Talepleri ({len(qr_requests)})</h3>
+                <h3 style="color: #d35400;">🎤 Groq AI Asistan Talepleri ({len(qr_requests)})</h3>
                 <ul>{qr_summary if qr_summary else "<li>Henüz talep yok.</li>"}</ul>
                 <br><a href="/" style="background: #2c3e50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; display:inline-block;">Ana Sayfaya Dön</a>
             </div>
         </body>
     </html>
-    ""
+    """
