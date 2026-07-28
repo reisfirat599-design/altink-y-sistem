@@ -5,10 +5,9 @@ import os
 import math
 import requests
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="6.4")
+app = FastAPI(title="Altınköy Otonom Sistem", version="6.5")
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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
-")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 whatsapp_feed = []
@@ -27,7 +26,7 @@ DYNAMIC_QRS = {
 STAFF_LIST = [
     {"id": 1, "name": "Onur Yılmaz", "title": "Saha Sorumlusu & Operasyon Amiri", "lat": 39.9334, "lon": 32.8597, "phone": "0537 939 36 77", "zone": "Köy Meydanı"},
     {"id": 2, "name": "Fırat Reis", "title": "Güvenlik & Değirmenler Sorumlusu", "lat": 39.9360, "lon": 32.8520, "phone": "0553 691 57 52", "zone": "Yel ve Su Değirmenleri"},
-    {"id": 3, "name": "Hakan Taşkale", "title": "Çantı Evler Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 61 72", "zone": "Geleneksel Çantı Evler"}
+    {"id": 3, "name": "Ayşe Kaya", "title": "Çantı Evler Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 61 72", "zone": "Geleneksel Çantı Evler"}
 ]
 
 PARK_ZONES = {
@@ -254,7 +253,7 @@ def qr_chat_get(kvkk_session: str = Cookie(None)):
     <h2>🎤 Altınköy Sesli Asistan</h2>
     <p>Müze kuralları hakkında dilediğinizi sorun.</p>
     <form id="chatForm" action="/api/qr-chat-post" method="POST" onsubmit="getLocAndSubmit(event)">
-        <input type="text" id="msgInput" name="message" placeholder="Örn: Piknik yapabilir miyim?" required style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; box-sizing:border-box; margin-bottom:8px;">
+        <input type="text" id="msgInput" name="message" placeholder="Örn: Piknik yapabilir miyim?" autocomplete="off" required style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; box-sizing:border-box; margin-bottom:8px;">
         <input type="hidden" id="latField" name="lat" value="39.9334">
         <input type="hidden" id="lonField" name="lon" value="32.8597">
         <button type="submit" class="btn btn-warning">Yapay Zekaya Sor</button>
@@ -374,14 +373,14 @@ def staff_management():
     html = f"<h2>👥 Personel Yönetimi</h2><table width='100%' style='border-collapse:collapse; font-size:12px;'><tr style='background:#eee; text-align:left;'><th style='padding:6px;'>Personel</th><th style='padding:6px;'>Bölge</th><th style='padding:6px;'>Tel</th></tr>{rows}</table><a href='/admin-panel' class='btn btn-dark' style='margin-top:15px;'>← Yönetim Paneline Dön</a>"
     return render_page("Personel", html)
 
-@app.get("/whatsapp-sim", response_class=HTMLResponse)
+@app.get("/whatsapp-sim", response_class=HTMLResponse) 
 def whatsapp_sim():
     feed = "".join([f"<div style='background:#e1f5fe; padding:8px; border-radius:6px; margin-bottom:6px; font-size:12px;'><b>{i['sender']}</b> [{i['time']}]: {i['message']}</div>" for i in reversed(whatsapp_feed[-5:])])
     html = f"""
     <h2>📱 WhatsApp Akışı</h2>
     <form action="/api/wa-post" method="POST">
         <input type="text" name="sender" value="Onur Yılmaz (Amir)" required style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid #ccc; font-size:12px;">
-        <input type="text" name="message" placeholder="Mesaj yaz..." required style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid #ccc; font-size:12px;">
+        <input type="text" name="message" placeholder="Mesaj yaz..." autocomplete="off" required style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid #ccc; font-size:12px;">
         <button type="submit" class="btn" style="background:#25D366; color:white;">Gönder</button>
     </form>
     <div style="margin-top:10px;">{feed if feed else "<p style='font-size:12px;'>Mesaj yok.</p>"}</div>
