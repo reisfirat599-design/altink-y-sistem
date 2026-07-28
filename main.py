@@ -15,7 +15,7 @@ qr_requests = []
 heatmap_data = []
 survey_responses = []
 
-ALTINKOY_BG = "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1920&q=80"
+ALTINKOY_BG = "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1920&q=80"
 DYNAMIC_QRS = {
     "direk-01": {"zone": "Köy Meydanı", "title": "Köy Meydanı Ana Direk", "target_url": "/visitor-home", "lat": 39.9334, "lon": 32.8597},
     "direk-02": {"zone": "Yel ve Su Değirmenleri", "title": "Değirmen Direği", "target_url": "/uyari/degirmen-bolgesi", "lat": 39.9360, "lon": 32.8520},
