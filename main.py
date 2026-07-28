@@ -1,24 +1,26 @@
 from fastapi import FastAPI, Request, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from typing import Optional
 from datetime import datetime
 import shutil
 import os
 import math
+import io
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="3.1.0")
+app = FastAPI(title="Altınköy Otonom Sistem", version="3.3.0")
 
 UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 whatsapp_feed = []
 incident_logs = []
+qr_requests = []
 
 # Başlangıç Belediye Personel Listesi
 STAFF_LIST = [
-    {"id": 1, "name": "Fırat Reis", "title": "Su Değirmeninde Güvenlik", "lat": 39.9334, "lon": 32.8597, "phone": "05536915752"},
-    {"id": 2, "name": "Onur Yılmaz", "title": "Peyzaj Sorumlusu", "lat": 39.9350, "lon": 32.8550, "phone": "05379393677"},
-    {"id": 3, "name": "Hakan Taşkale", "title": "Peyzaj Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "05468016172"}
+    {"id": 1, "name": "Ahmet Yılmaz", "title": "Saha Amiri", "lat": 39.9334, "lon": 32.8597, "phone": "0555 111 2233"},
+    {"id": 2, "name": "Mehmet Demir", "title": "Güvenlik Personeli", "lat": 39.9350, "lon": 32.8550, "phone": "0555 222 3344"},
+    {"id": 3, "name": "Ayşe Kaya", "title": "Peyzaj Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0555 333 4455"}
 ]
 
 def calculate_distance(lat1, lon1, lat2, lon2):
@@ -42,6 +44,7 @@ def home_page():
                 a.emergency { background: #E74C3C; }
                 a.staff { background: #8e44ad; }
                 a.dashboard { background: #34495E; }
+                a.qrchat { background: #d35400; }
             </style>
         </head>
         <body>
@@ -51,6 +54,7 @@ def home_page():
                 <a class="staff" href="/staff-management">👥 Belediye Çalışanları Kayıt & Yönetimi</a>
                 <a class="whatsapp" href="/whatsapp-sim">📱 WhatsApp Grup Entegrasyon Paneli</a>
                 <a class="emergency" href="/visitor-portal">🚶 Ziyaretçi Acil Durum / QR Portalı</a>
+                <a class="qrchat" href="/qr-chat">🎤 Park Direkleri AI Sesli Asistan (QR)</a>
                 <a class="dashboard" href="/live-dashboard">📊 Müdürlük Canlı Rapor & Takip</a>
             </div>
         </body>
@@ -272,6 +276,126 @@ def visitor_portal():
     </html>
     """
 
+@app.get("/qr-chat", response_class=HTMLResponse)
+def qr_chat_page():
+    return """
+    <html>
+        <head>
+            <title>Altınköy Park Asistanı</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #fdfbf7; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; box-sizing: border-box; }
+                .chat-container { width: 100%; max-width: 450px; background: white; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); display: flex; flex-direction: column; overflow: hidden; height: 85vh; }
+                .chat-header { background: #d35400; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 16px; }
+                .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; background: #faf9f6; }
+                .message { padding: 10px 14px; border-radius: 10px; max-width: 80%; font-size: 14px; line-height: 1.4; }
+                .bot { background: #eef2f7; color: #333; align-self: flex-start; border-bottom-left-radius: 2px; }
+                .user { background: #d35400; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
+                .chat-input-area { padding: 15px; background: white; border-top: 1px solid #eee; display: flex; gap: 10px; align-items: center; }
+                input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; outline: none; font-size: 14px; }
+                button { background: #d35400; color: white; border: none; padding: 12px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+                .mic-btn { background: #27ae60; }
+                .start-banner { text-align: center; padding: 20px; }
+            </style>
+        </head>
+        <body>
+            <div class="chat-container">
+                <div class="chat-header">🌾 Altınköy Park 7/24 AI Asistanı</div>
+                <div id="chatMessages" class="chat-messages">
+                    <div class="message bot">Merhaba! Ben Altınköy Park Asistanı. Park direğindeki QR kodu okuttunuz. İstek, talep veya şikayetlerinizi bana sesli ya da yazılı olarak iletebilirsiniz. Size nasıl yardımcı olabilirim?</div>
+                </div>
+                <div class="chat-input-area">
+                    <button class="mic-btn" onclick="startVoiceChat()" title="Sesli Konuş">🎤 Başlat</button>
+                    <input type="text" id="userInput" placeholder="Talebinizi yazın veya sesli söyleyin..." onkeypress="if(event.key === 'Enter') sendMessage()">
+                    <button onclick="sendMessage()">Gönder</button>
+                </div>
+            </div>
+
+            <script>
+                function startVoiceChat() {
+                    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                        alert("Tarayıcınız ses tanıma özelliğini desteklemiyor. Lütfen yazarak iletin.");
+                        return;
+                    }
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    const recognition = new SpeechRecognition();
+                    recognition.lang = 'tr-TR';
+                    
+                    const inputEl = document.getElementById('userInput');
+                    inputEl.placeholder = "Dinleniyor, lütfen konuşun...";
+                    
+                    recognition.onresult = function(event) {
+                        const speechToText = event.results[0][0].transcript;
+                        inputEl.value = speechToText;
+                        inputEl.placeholder = "Talebinizi yazın veya sesli söyleyin...";
+                        sendMessage();
+                    };
+                    
+                    recognition.onerror = function() {
+                        inputEl.placeholder = "Ses algılanamadı, tekrar deneyin.";
+                    };
+                    
+                    recognition.start();
+                }
+
+                function sendMessage() {
+                    const inputEl = document.getElementById('userInput');
+                    const text = inputEl.value.trim();
+                    if (!text) return;
+
+                    const chatMessages = document.getElementById('chatMessages');
+                    chatMessages.innerHTML += <div class="message user">${text}</div>;
+                    inputEl.value = "";
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                    // AI Yanıt Simülasyonu ve Backend'e Kayıt
+                    fetch('/api/qr-chat-submit', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ message: text })
+                    }).then(res => res.json()).then(data => {
+                        chatMessages.innerHTML += <div class="message bot">${data.reply}</div>;
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        
+                        // Sesli yanıt (Tarayıcı Sesi - Text-to-Speech)
+                        if ('speechSynthesis' in window) {
+                            const utterance = new SpeechSynthesisUtterance(data.reply);
+                            utterance.lang = 'tr-TR';
+                            window.speechSynthesis.speak(utterance);
+                        }
+                    });
+                }
+            </script>
+        </body>
+    </html>
+    """
+
+@app.post("/api/qr-chat-submit")
+def qr_chat_submit(data: dict):
+    user_msg = data.get("message", "")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Basit Akıllı Bot Mantığı
+    reply = "Talebiniz alınmıştır. En kısa sürede ilgili saha ekibimize yönlendirilecektir."
+    msg_l = user_msg.lower()
+    
+    if "tuvalet" in msg_l or "lavabo" in msg_l:
+        reply = "En yakın tuvalet ana meydanın kuzey doğusundadır. Temizlik ekibine bildirildi."
+    elif "çöp" in msg_l or "kirl" in msg_l:
+        reply = "Çöp bildiriminiz için teşekkürler. Temizlik personeli bölgeye yönlendiriliyor."
+    elif "otopark" in msg_l or "araç" in msg_l:
+        reply = "Otopark düzeni ve yönlendirmeler için güvenlik ekibimiz bilgilendirildi."
+    elif "su" in msg_l or "çeşme" in msg_l:
+        reply = "Su hatları ve çeşmelerle ilgili bakım talebiniz peyzaj ekibine iletildi."
+
+    qr_requests.append({
+        "time": timestamp,
+        "message": user_msg,
+        "ai_reply": reply
+    })
+
+    return {"status": "success", "reply": reply}
+
 @app.post("/api/emergency")
 def trigger_emergency(signal: dict):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -305,6 +429,7 @@ def trigger_emergency(signal: dict):
 def live_dashboard():
     feed_summary = "".join([f"<li style='margin-bottom:8px;'>[{i['time']}] <b>{i['sender']}</b>: {i['message']} ➔ <i style='color:#27ae60;'>({i['ai_tag']})</i></li>" for i in whatsapp_feed])
     incident_summary = "".join([f"<li style='margin-bottom:8px;'>[{i['time']}] <b>{i['visitor_id']}</b> acil sinyal gönderdi ➔ Yönlendirilen Personel: <b style='color:#c0392b;'>{i.get('assigned_staff', 'Bilinmiyor')}</b></li>" for i in incident_logs])
+    qr_summary = "".join([f"<li style='margin-bottom:8px;'>[{i['time']}] Ziyaretçi Talebi: <b>{i['message']}</b> ➔ Yanıt: <span style='color:#d35400;'>{i['ai_reply']}</span></li>" for i in qr_requests])
     
     return f"""
     <html>
@@ -314,7 +439,14 @@ def live_dashboard():
                 <h2 style="color: #2c3e50; margin-top:0;">📊 Müdürlük Günlük Operasyon ve AI Rapor Ekranı</h2>
                 <hr style="border:0; border-top:1px solid #eee; margin: 20px 0;">
                 
-                <h3 style="color: #34495E;">📱 WhatsApp Grup Faaliyet Akışı (AI Sınıflandırılmış)</h3>
+                <div style="margin-bottom: 20px;">
+                    <a href="/api/export-excel" style="background: #27ae60; color: white; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">📥 Günlük Raporu Excel Olarak İndir (.csv)</a>
+                </div>
+
+                <h3 style="color: #d35400;">🎤 Park QR Direkleri AI Asistan Talepleri ({len(qr_requests)})</h3>
+                <ul style="padding-left: 20px; color: #555;">{qr_summary if qr_summary else "<li>Henüz QR asistan üzerinden talep gelmedi.</li>"}</ul>
+
+                <h3 style="color: #34495E; margin-top: 30px;">📱 WhatsApp Grup Faaliyet Akışı (AI Sınıflandırılmış)</h3>
                 <ul style="padding-left: 20px; color: #555;">{feed_summary if feed_summary else "<li>Henüz grup akışı yok.</li>"}</ul>
                 
                 <h3 style="color: #c0392b; margin-top: 30px;">🚨 Acil Durum / Konum Bildirimleri ve Personel Yönlendirmeleri</h3>
@@ -327,3 +459,29 @@ def live_dashboard():
         </body>
     </html>
     """
+
+@app.get("/api/export-excel")
+def export_excel():
+    csv_content = "Tarih/Saat,Gonderen_Personel,Mesaj,AI_Etiketi\n"
+    for item in whatsapp_feed:
+        msg_clean = item['message'].replace(',', ' ')
+        csv_content += f"{item['time']},{item['sender']},{msg_clean},{item['ai_tag']}\n"
+    
+    csv_content += "\n--- QR DIREKLERI AI ASISTAN TALEPLERI ---\n"
+    csv_content += "Tarih/Saat,Ziyaretci_Mesaji,AI_Yaniti\n"
+    for qr in qr_requests:
+        m_clean = qr['message'].replace(',', ' ')
+        r_clean = qr['ai_reply'].replace(',', ' ')
+        csv_content += f"{qr['time']},{m_clean},{r_clean}\n"
+
+    csv_content += "\n--- ACIL DURUM KAYITLARI ---\n"
+    csv_content += "Tarih/Saat,Ziyaretci_ID,Yonlendirilen_Personel\n"
+    for inc in incident_logs:
+        csv_content += f"{inc['time']},{inc['visitor_id']},{inc.get('assigned_staff', 'Bilinmiyor')}\n"
+
+    file_stream = io.BytesIO(csv_content.encode("utf-8-sig"))
+    return StreamingResponse(
+        file_stream,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=Altinkoy_Gunluk_Rapor.csv"}
+    )
