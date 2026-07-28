@@ -6,7 +6,7 @@ import math
 import requests
 import time
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="4.8")
+app = FastAPI(title="Altınköy Otonom Sistem", version="4.9")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -17,10 +17,10 @@ qr_requests = []
 heatmap_data = []
 survey_responses = []
 
-# Spam / Manipülasyon Önleme (Rate Limiting) için zaman takip sözlüğü
+# Spam / Manipülasyon Önleme (Rate Limiting)
 user_cooldowns = {}
 
-# Dinamik Direk & QR Yönetim Veritabanı (Sabit Koordinat Destekli)
+# Dinamik Direk & QR Yönetim Veritabanı
 DYNAMIC_QRS = {
     "direk-01": {
         "zone": "Köy Meydanı", 
@@ -33,7 +33,7 @@ DYNAMIC_QRS = {
         "zone": "Yel ve Su Değirmenleri", 
         "title": "Değirmen & Dere Yolu Direği", 
         "target_url": "/uyari/degirmen-bolgesi", 
-        "desc": "Su değirmeni, dere kenarı ve piknik alanı uyarı noktası",
+        "desc": "Su değirmeni, dere kenarı piknik ve kahvaltı uyarı noktası",
         "lat": 39.9360, "lon": 32.8520
     },
     "direk-03": {
@@ -65,11 +65,11 @@ ALTINKOY_LOCATIONS = {
     "değirmen": "Çalışır durumdaki yel değirmeni ve su değirmeni müzenin kuzeybatı tarafındadır.",
     "dere": "Değirmen kenarındaki dere yatağı ve su boyu dinlenme alanıdır. Can güvenliği için suya girmek kesinlikle yasaktır.",
     "piknik": "Müzemizde piknik yapmak ve dışarıdan yiyecek içecek getirmek kurallarımız gereği kesinlikle yasaktır. İhtiyaçlarınız için köy fırınımız ve kahvemiz hizmetinizdedir.",
-    "kahvaltı": "Dışarıdan yiyecek içecek getirmek yasaktır, köy kahvemizde taze kahvaltı ürünlerimiz bulunmaktadır.",
+    "kahvaltı": "Dere kenarlarında kahvaltı yapmak veya dışarıdan yiyecek içecek getirmek yasaktır. Köy kahvemizde taze kahvaltı ürünlerimiz bulunmaktadır.",
     "köy meydanı": "Köy meydanında köy kahvesi, cami, okul, muhtarlık ve bakkal yer almaktadır.",
     "meslekler": "Kalaycı, nalbant ve çoban gibi eski meslekler alanında geleneksel zanaatlar canlı olarak gösterilmektedir.",
     "hayvanlar": "Serbest gezen evcil hayvanlar ve geniş yürüyüş yolları doğa alanındadır.",
-    "köy ekmeği": "Taş fırında yapılan geleneksel köy ekmeği ve organik ürünlar ana giriş yakınındadır.",
+    "köy ekmeği": "Taş fırında yapılan geleneksel köy ekmeği ve organik ürünler ana giriş yakınındadır.",
     "tuvalet": "En yakın tuvalet köy meydanı yakınlarındadır.",
     "otopark": "Ana araç otoparkı müze girişindedir. Çalışma saatlerimiz Pazartesi hariç 10.00 - 20.00 arasıdır."
 }
@@ -91,7 +91,7 @@ def ask_groq_ai(prompt: str) -> str:
             return f"📍 {desc}"
 
     if GROQ_API_KEY == "BURAYA_GROQ_API_KEY_GIRINIZ" or not GROQ_API_KEY:
-        return f"Altınköy Asistanı: '{prompt}' dedin ya, hemen söyleyeyim; bizim işletme kurallarımız gereği dışarıdan yiyecek içecek getirmek ve dere yataklarına girmek kesinlikle yasaktır. Çalışma saatlerimiz Pazartesi hariç 10:00 - 20:00 arasıdır!"
+        return f"Altınköy Asistanı: '{prompt}' dedin ya, hemen söyleyeyim; bizim işletme kurallarımız gereği dışarıdan yiyecek içecek getirmek, piknik/kahvaltı yapmak ve dere yataklarına girmek kesinlikle yasaktır. Çalışma saatlerimiz Pazartesi hariç 10:00 - 20:00 arasıdır!"
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     payload = {
@@ -105,7 +105,7 @@ def ask_groq_ai(prompt: str) -> str:
                     "1. Asla uzun uzadıya, boğucu, edebi veya roman gibi mesajlar atma; kısa, net ve öz ol.\n"
                     "2. Sınırlarını bil: Sadece Altınköy hakkında konuş, köyün dışına çıkma.\n"
                     "3. Hayal gücün yok, tamamen gerçekçi ve somut bilgiler ver.\n"
-                    "4. EN ÖNEMLİ KURALLAR: Dışarıdan yiyecek içecek getirmek, piknik/kahvaltı yapmak ve dere yatakları/su içine girmek kesinlikle yasaktır. Ziyaretçi bunu sorduğunda veya ima ettiğinde net, kuralcı ama sıcak bir dille uyar."
+                    "4. EN ÖNEMLİ KURALLAR: Dışarıdan yiyecek içecek getirmek, piknik ve kahvaltı yapmak, dere yatakları/su içine girmek kesinlikle yasaktır. Ziyaretçi bunu sorduğunda veya ima ettiğinde net, kuralcı ama sıcak bir dille uyar."
                 )
             },
             {"role": "user", "content": prompt}
@@ -118,7 +118,7 @@ def ask_groq_ai(prompt: str) -> str:
             return response.json()["choices"][0]["message"]["content"]
     except:
         pass
-    return f"Buyur canım, '{prompt}' dedin ama unutma; müzemizde dışarıdan yiyecek getirmek ve suya girmek yasaktır. Köy kahvemize bekleriz!"
+    return f"Buyur canım, '{prompt}' dedin ama unutma; müzemizde dışarıdan yiyecek getirmek, piknik/kahvaltı yapmak ve suya girmek yasaktır. Köy kahvemize bekleriz!"
 
 @app.get("/", response_class=HTMLResponse)
 def home_page(kvkk_session: str = Cookie(None)):
@@ -152,7 +152,7 @@ def home_page(kvkk_session: str = Cookie(None)):
         <head><title>Altınköy Açık Hava Müzesi Otonom Sistem</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
         <body style="font-family:Segoe UI; text-align:center; background:#f4f6f9; padding:30px;">
             <div style="background:white; padding:30px; border-radius:12px; display:inline-block; max-width:450px; width:100%; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
-                <h2>🌾 Altınköy Açık Hava Müzesi v4.8</h2>
+                <h2>🌾 Altınköy Açık Hava Müzesi v4.9</h2>
                 <p style="color:green; font-size:12px; font-weight:bold;">✔️ KVKK Genel Oturumu Aktif (Anti-Spam Korumalı)</p>
                 <a href="/qr-manager" style="display:block; background:#2980b9; color:white; padding:14px; margin:10px 0; text-decoration:none; border-radius:8px; font-weight:bold;">🔗 Dinamik Direk & QR Yönetimi</a>
                 <a href="/staff-management" style="display:block; background:#8e44ad; color:white; padding:14px; margin:10px 0; text-decoration:none; border-radius:8px; font-weight:bold;">👥 Personel Yönetimi</a>
@@ -171,7 +171,7 @@ def home_page(kvkk_session: str = Cookie(None)):
 @app.post("/api/set-session")
 def set_session():
     response = RedirectResponse(url="/", status_code=303)
-    response.set_cookie(key="kvkk_session", value="onayli", maxAge=86400)
+    response.set_cookie(key="kvkk_session", value="onayli", max_age=86400)
     return response
 
 @app.get("/api/logout")
@@ -180,7 +180,7 @@ def logout():
     response.delete_cookie(key="kvkk_session")
     return response
 
-# --- DİNAMİK DİREK & QR YÖNETİMİ (Sabit Koordinat Entegrasyonlu) ---
+# --- DİNAMİK DİREK & QR YÖNETİMİ ---
 @app.get("/qr-manager", response_class=HTMLResponse)
 def qr_manager_page(request: Request):
     base_url = str(request.base_url)
@@ -213,7 +213,7 @@ def qr_manager_page(request: Request):
         <body style="font-family:Segoe UI; padding:20px; background:#f4f6f9;">
             <div style="max-width:700px; margin:auto; background:white; padding:25px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                 <h2 style="color:#2980b9;">🔗 Dinamik Direk & QR Yönetim Paneli</h2>
-                <p style="font-size:12px; color:gray;">Müzedeki direklere bir kez QR basıp yapıştırın. İstediğiniz zaman bu panelden arkasındaki yönlendirmeyi anında değiştirin; etiket sökme maliyetini sıfırlayın.</p>
+                <p style="font-size:12px; color:gray;">Müzedeki direklere bir kez QR basıp yapıştırın. İstediğiniz zaman bu panelden arkasındaki yönlendirmeyi anında değiştirin.</p>
                 <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
                 {qr_rows}
                 <br><a href="/" style="background:#2c3e50; color:white; padding:10px 20px; text-decoration:none; border-radius:6px; display:inline-block;">← Ana Sayfa</a>
@@ -242,12 +242,12 @@ def redirect_dynamic_qr(code_id: str):
         return RedirectResponse(url=qr_info["target_url"], status_code=303)
     return RedirectResponse(url="/", status_code=303)
 
-# Değirmen ve Dere Bölgesi Özel Güvenlik & Kural Bildirim Sayfası
+# Değirmen ve Dere Bölgesi Piknik & Güvenlik Kural Bildirim Sayfası
 @app.get("/uyari/degirmen-bolgesi", response_class=HTMLResponse)
 def degirmen_uyari_page():
     return """
     <html>
-        <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Altınköy - Bölgesel Uyarı</title></head>
+        <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Altınköy - Değirmen & Dere Bölgesi Kuralları</title></head>
         <body style="font-family:Segoe UI; background:#fff5f5; padding:20px; text-align:center;">
             <div style="max-width:480px; margin:auto; background:white; padding:30px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05); text-align:left;">
                 <h2 style="color:#c0392b; text-align:center;">⚠️ Değirmen & Dere Bölgesi Kuralları</h2>
@@ -256,8 +256,8 @@ def degirmen_uyari_page():
                     <p style="margin:0; font-size:12px; color:#7f1d1d;">Can güvenliğiniz açısından su değirmeni çevresindeki dere yatağına ve sulara girmek kesinlikle yasak ve tehlikelidir.</p>
                 </div>
                 <div style="background:#fffbeb; border-left:4px solid #f59e0b; padding:12px; margin:15px 0; border-radius:4px;">
-                    <p style="margin:0 0 10px 0; font-size:13px; color:#92400e; font-weight:bold;">🥪 2. Dışarıdan Yiyecek / İçecek Yasaktır:</p>
-                    <p style="margin:0; font-size:12px; color:#78350f;">Müzemiz sınırları içerisinde piknik yapmak, kahvaltı yapmak ve dışarıdan yiyecek/içecek getirmek işletme kurallarımız gereği yasaktır. Karnınızı doyurmak ve taze ürünler tatmak için köy fırınımızı ve köy kahvemizi ziyaret edebilirsiniz.</p>
+                    <p style="margin:0 0 10px 0; font-size:13px; color:#92400e; font-weight:bold;">🥪 2. Dışarıdan Yiyecek, İçecek, Piknik ve Kahvaltı Yasaktır:</p>
+                    <p style="margin:0; font-size:12px; color:#78350f;">Dere kenarında ve müzemiz sınırları içerisinde piknik yapmak, kahvaltı yapmak ve dışarıdan yiyecek/içecek getirmek işletme kurallarımız gereği kesinlikle yasaktır. İhtiyaçlarınız için köy fırınımızı ve köy kahvemizi ziyaret edebilirsiniz.</p>
                 </div>
                 <br><a href="/qr-chat" style="display:block; background:#2980b9; color:white; padding:12px; text-decoration:none; border-radius:6px; text-align:center; font-weight:bold;">🎤 Soru Sormak İçin Asistana Git</a>
                 <br><div style="text-align:center;"><a href="/" style="color:gray; font-size:12px; text-decoration:none;">← Ana Sayfa</a></div>
@@ -265,7 +265,6 @@ def degirmen_uyari_page():
         </body>
     </html>
     """
-# -------------------------------------------------------------
 
 @app.get("/staff-management", response_class=HTMLResponse)
 def staff_page():
@@ -485,7 +484,7 @@ def qr_chat_get():
         <body style="font-family:Segoe UI; padding:20px; background:#fdfbf7;">
             <div style="max-width:550px; margin:auto; background:white; padding:20px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                 <h2 style="color:#d35400;">🎤 Altınköy AI Asistanı & Sesli Tarif</h2>
-                <p style="font-size:12px; color:gray;">Örn: Piknik yapabilir miyim? Dereye girebilir miyim? Çantı evler nerede?</p>
+                <p style="font-size:12px; color:gray;">Örn: Piknik yapabilir miyim? Kahvaltı getirebilir miyim? Dereye girebilir miyim?</p>
                 <form id="chatForm" action="/api/qr-chat-post" method="POST" onsubmit="askWithLocation(event)">
                     <input type="text" id="msgInput" name="message" placeholder="Müze hakkında ne öğrenmek istemiştiniz?" required style="width:100%; padding:12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;"><br>
                     <input type="hidden" id="latField" name="lat" value="39.9334">
