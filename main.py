@@ -5,7 +5,7 @@ import os
 import math
 import requests
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="6.5")
+app = FastAPI(title="Altınköy Otonom Sistem", version="7.0")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -15,7 +15,10 @@ qr_requests = []
 heatmap_data = []
 survey_responses = []
 
-ALTINKOY_BG = "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1920&q=80
+# Altınköy Müzesi Merkez Koordinatları (Manipülasyon koruması ve bölge tespiti için)
+ALTINKOY_CENTER_LAT = 39.9334
+ALTINKOY_CENTER_LON = 32.8597
+
 DYNAMIC_QRS = {
     "direk-01": {"zone": "Köy Meydanı", "title": "Köy Meydanı Ana Direk", "target_url": "/visitor-home", "lat": 39.9334, "lon": 32.8597},
     "direk-02": {"zone": "Yel ve Su Değirmenleri", "title": "Değirmen Direği", "target_url": "/uyari/degirmen-bolgesi", "lat": 39.9360, "lon": 32.8520},
@@ -51,6 +54,10 @@ def find_nearest_zone(lat: float, lon: float) -> str:
         if dist < min_dist:
             min_dist, nearest = dist, z
     return nearest
+
+def is_inside_altinkoy(lat: float, lon: float) -> bool:
+    dist = math.sqrt((lat - ALTINKOY_CENTER_LAT)*2 + (lon - ALTINKOY_CENTER_LON)*2)
+    return dist < 0.035
 
 def ask_groq_ai(prompt: str, lat: float = None, lon: float = None) -> str:
     p_lower = prompt.lower()
@@ -93,29 +100,29 @@ def render_page(title: str, content_html: str, extra_js: str = "") -> str:
             <style>
                 body {{
                     font-family: 'Segoe UI', Tahoma, sans-serif;
-                    background: url('{ALTINKOY_BG}') no-repeat center center fixed;
-                    background-size: cover;
+                    background-color: #f4f6f8;
+                    color: #2c3e50;
                     margin: 0; padding: 20px;
                     display: flex; justify-content: center; align-items: center; min-height: 90vh;
                 }}
                 .card {{
-                    background: rgba(255, 255, 255, 0.94);
-                    backdrop-filter: blur(10px);
+                    background: #ffffff;
+                    border: 1px solid #dcdde1;
                     max-width: 440px; width: 100%;
-                    padding: 25px; border-radius: 20px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+                    padding: 25px; border-radius: 12px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.06);
                     box-sizing: border-box;
                     max-height: 92vh; overflow-y: auto;
                 }}
-                h2 {{ color: #2c3e50; margin-top: 0; text-align: center; font-size: 20px; }}
+                h2 {{ color: #2c5e3b; margin-top: 0; text-align: center; font-size: 20px; }}
                 p {{ color: #555; font-size: 13px; text-align: center; }}
                 .btn {{
                     display: block; width: 100%; padding: 12px; margin: 8px 0;
-                    border: none; border-radius: 10px; font-weight: bold; font-size: 14px;
+                    border: none; border-radius: 8px; font-weight: bold; font-size: 14px;
                     text-align: center; text-decoration: none; cursor: pointer; transition: 0.2s;
                     box-sizing: border-box;
                 }}
-                .btn-primary {{ background: #27ae60; color: white; }}
+                .btn-primary {{ background: #2c5e3b; color: white; }}
                 .btn-warning {{ background: #d35400; color: white; }}
                 .btn-danger {{ background: #c0392b; color: white; }}
                 .btn-dark {{ background: #34495e; color: white; }}
@@ -149,7 +156,7 @@ def home_page(kvkk_session: str = Cookie(None)):
         <h2>🌾 Altınköy Açık Hava Müzesi</h2>
         <p>Akıllı Asistan ve Canlı Konum Sistemine Hoş Geldiniz</p>
         <form action="/api/set-session" method="POST">
-            <div style="background:#f1f8e9; padding:10px; border-radius:8px; font-size:11px; color:#33691e; max-height:80px; overflow-y:auto; margin-bottom:12px; border:1px solid #c5e1a5;">
+            <div style="background:#e8f5e9; padding:10px; border-radius:6px; font-size:11px; color:#2e7d32; max-height:80px; overflow-y:auto; margin-bottom:12px; border:1px solid #c8e6c9;">
                 <b>KVKK Aydınlatma Metni:</b> Konum yönlendirmesi ve asistan hizmeti sunabilmek amacıyla kişisel verileriniz işlenmektedir.
             </div>
             <label style="font-size:12px; display:block; margin-bottom:12px; cursor:pointer;">
@@ -244,7 +251,7 @@ def qr_chat_get(kvkk_session: str = Cookie(None)):
         <div style='background:#f9f9f9; padding:8px; border-radius:6px; margin-bottom:8px; font-size:12px;'>
             <b>Sen:</b> {q['msg']}<br>
             <b>Asistan:</b> {q['reply']}<br>
-            <button onclick="speakText('{safe_reply}')" style="margin-top:4px; background:#27ae60; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">🔊 Sesli Dinle</button>
+            <button onclick="speakText('{safe_reply}')" style="margin-top:4px; background:#2c5e3b; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">🔊 Sesli Dinle</button>
         </div>
         """
 
@@ -252,7 +259,7 @@ def qr_chat_get(kvkk_session: str = Cookie(None)):
     <h2>🎤 Altınköy Sesli Asistan</h2>
     <p>Müze kuralları hakkında dilediğinizi sorun.</p>
     <form id="chatForm" action="/api/qr-chat-post" method="POST" onsubmit="getLocAndSubmit(event)">
-        <input type="text" id="msgInput" name="message" placeholder="Örn: Piknik yapabilir miyim?" autocomplete="off" required style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; box-sizing:border-box; margin-bottom:8px;">
+        <input type="text" id="msgInput" name="message" placeholder="Örn: Piknik yapabilir miyim?" autocomplete="off" required style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; margin-bottom:8px;">
         <input type="hidden" id="latField" name="lat" value="39.9334">
         <input type="hidden" id="lonField" name="lon" value="32.8597">
         <button type="submit" class="btn btn-warning">Yapay Zekaya Sor</button>
@@ -326,7 +333,7 @@ def emergency_form(lat: float = Form(39.9334), lon: float = Form(32.8597)):
     heatmap_data.append({"zone": z, "type": "Acil Durum Sinyali", "time": datetime.now().strftime("%H:%M"), "lat": lat, "lon": lon})
     nearest = min(STAFF_LIST, key=lambda s: 0 if s['zone'] == z else 1)
     html = f"""
-    <h2 style="color:#27ae60;">✔️ Sinyal Alındı</h2>
+    <h2 style="color:#2c5e3b;">✔️ Sinyal Alındı</h2>
     <p><b>Bölgeniz:</b> {z}<br>En yakın sorumlu <b>{nearest['name']}</b> ({nearest['phone']}) konumunuza yönlendirildi.</p>
     <a href="/visitor-home" class="btn btn-primary" style="margin-top:15px;">Ana Ekrana Dön</a>
     """
@@ -337,24 +344,81 @@ def survey_page(kvkk_session: str = Cookie(None)):
     if kvkk_session != "onayli":
         return RedirectResponse(url="/", status_code=303)
     html = """
-    <h2>⭐ Ziyaretçi Anketi</h2>
-    <form action="/api/submit-survey" method="POST">
-        <label style="font-size:12px; font-weight:bold;">Memnuniyet Puanınız:</label>
-        <select name="score" style="width:100%; padding:10px; margin:5px 0 12px 0; border-radius:6px; border:1px solid #ccc;">
+    <h2>⭐ Detaylı Ziyaretçi Anketi</h2>
+    <p style="font-size:11px; color:#e67e22;">Ankete katılım için Altınköy saha sınırları içerisinde olmanız gerekmektedir.</p>
+    <form id="surveyForm" action="/api/submit-survey" method="POST" onsubmit="getSurveyLoc(event)">
+        <input type="hidden" id="sLat" name="lat" value="0">
+        <input type="hidden" id="sLon" name="lon" value="0">
+        
+        <label style="font-size:12px; font-weight:bold; display:block; margin-top:8px;">Personel İlgisi ve Nazikliği:</label>
+        <select name="staff_score" style="width:100%; padding:8px; margin:4px 0 8px 0; border-radius:6px; border:1px solid #ccc;">
+            <option value="5">⭐⭐⭐⭐⭐ Çok İyi</option>
+            <option value="4">⭐⭐⭐⭐ İyi</option>
+            <option value="3">⭐⭐⭐ Orta</option>
+            <option value="1">⭐ Zayıf</option>
+        </select>
+
+        <label style="font-size:12px; font-weight:bold; display:block;">Müze Temizliği ve Düzeni:</label>
+        <select name="clean_score" style="width:100%; padding:8px; margin:4px 0 8px 0; border-radius:6px; border:1px solid #ccc;">
+            <option value="5">⭐⭐⭐⭐⭐ Çok İyi</option>
+            <option value="4">⭐⭐⭐⭐ İyi</option>
+            <option value="3">⭐⭐⭐ Orta</option>
+            <option value="1">⭐ Zayıf</option>
+        </select>
+
+        <label style="font-size:12px; font-weight:bold; display:block;">Genel Memnuniyet:</label>
+        <select name="general_score" style="width:100%; padding:8px; margin:4px 0 12px 0; border-radius:6px; border:1px solid #ccc;">
             <option value="5">⭐⭐⭐⭐⭐ Mükemmel</option>
             <option value="4">⭐⭐⭐⭐ Çok İyi</option>
             <option value="3">⭐⭐⭐ Orta</option>
+            <option value="1">⭐ Zayıf</option>
         </select>
-        <button type="submit" class="btn btn-primary">Anketi Gönder</button>
+
+        <button type="submit" class="btn btn-primary">Konumu Doğrula ve Anketi Gönder</button>
     </form>
     <a href="/visitor-home" class="btn btn-dark" style="margin-top:10px;">← Ana Ekrana Dön</a>
+
+    <script>
+        function getSurveyLoc(e) {
+            e.preventDefault();
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    document.getElementById('sLat').value = pos.coords.latitude;
+                    document.getElementById('sLon').value = pos.coords.longitude;
+                    document.getElementById('surveyForm').submit();
+                }, () => {
+                    alert("Konum izni alınamadığı için anket gönderilemedi.");
+                });
+            } else {
+                alert("Tarayıcınız konum özelliğini desteklemiyor.");
+            }
+        }
+    </script>
     """
     return render_page("Anket", html)
 
-@app.post("/api/submit-survey")
-def submit_survey(score: int = Form(...)):
-    survey_responses.append({"score": score})
-    return RedirectResponse(url="/visitor-home", status_code=303)
+@app.post("/api/submit-survey", response_class=HTMLResponse)
+def submit_survey(staff_score: int = Form(...), clean_score: int = Form(...), general_score: int = Form(...), lat: float = Form(...), lon: float = Form(...)):
+    if not is_inside_altinkoy(lat, lon):
+        html = """
+        <h2 style="color:#c0392b;">❌ Konum Doğrulanamadı</h2>
+        <p>Ankete yalnızca Altınköy Açık Hava Müzesi sınırları içerisindeyken katılım sağlayabilirsiniz.</p>
+        <a href="/survey" class="btn btn-danger" style="margin-top:15px;">Tekrar Dene</a>
+        """
+        return render_page("Hata", html)
+    
+    survey_responses.append({
+        "staff": staff_score,
+        "clean": clean_score,
+        "general": general_score
+    })
+    
+    html = """
+    <h2 style="color:#2c5e3b;">✔️ Teşekkür Ederiz</h2>
+    <p>Değerli görüşleriniz başarıyla kaydedilmiştir.</p>
+    <a href="/visitor-home" class="btn btn-primary" style="margin-top:15px;">Ana Ekrana Dön</a>
+    """
+    return render_page("Başarılı", html)
 
 @app.get("/qr-manager", response_class=HTMLResponse)
 def qr_manager(request: Request):
@@ -372,7 +436,7 @@ def staff_management():
     html = f"<h2>👥 Personel Yönetimi</h2><table width='100%' style='border-collapse:collapse; font-size:12px;'><tr style='background:#eee; text-align:left;'><th style='padding:6px;'>Personel</th><th style='padding:6px;'>Bölge</th><th style='padding:6px;'>Tel</th></tr>{rows}</table><a href='/admin-panel' class='btn btn-dark' style='margin-top:15px;'>← Yönetim Paneline Dön</a>"
     return render_page("Personel", html)
 
-@app.get("/whatsapp-sim", response_class=HTMLResponse) 
+@app.get("/whatsapp-sim", response_class=HTMLResponse)
 def whatsapp_sim():
     feed = "".join([f"<div style='background:#e1f5fe; padding:8px; border-radius:6px; margin-bottom:6px; font-size:12px;'><b>{i['sender']}</b> [{i['time']}]: {i['message']}</div>" for i in reversed(whatsapp_feed[-5:])])
     html = f"""
@@ -401,6 +465,23 @@ def heatmap():
 
 @app.get("/live-dashboard", response_class=HTMLResponse)
 def live_dashboard():
-    avg = sum(s['score'] for s in survey_responses) / len(survey_responses) if survey_responses else 5.0
-    html = f"<h2>📊 Rapor Paneli</h2><p><b>Ortalama Memnuniyet:</b> ⭐ {avg:.1f} / 5.0 ({len(survey_responses)} Anket)</p><a href='/admin-panel' class='btn btn-dark' style='margin-top:15px;'>← Yönetim Paneline Dön</a>"
+    if survey_responses:
+        avg_staff = sum(s['staff'] for s in survey_responses) / len(survey_responses)
+        avg_clean = sum(s['clean'] for s in survey_responses) / len(survey_responses)
+        avg_general = sum(s['general'] for s in survey_responses) / len(survey_responses)
+        total_count = len(survey_responses)
+    else:
+        avg_staff = avg_clean = avg_general = 5.0
+        total_count = 0
+
+    html = f"""
+    <h2>📊 Rapor Paneli</h2>
+    <p><b>Toplam Anket:</b> {total_count}</p>
+    <div style='font-size:12px; background:#f9f9f9; padding:10px; border-radius:6px; line-height:1.6;'>
+        👥 <b>Personel İlgisi:</b> ⭐ {avg_staff:.1f} / 5.0<br>
+        🧹 <b>Temizlik & Düzen:</b> ⭐ {avg_clean:.1f} / 5.0<br>
+        🌟 <b>Genel Memnuniyet:</b> ⭐ {avg_general:.1f} / 5.0
+    </div>
+    <a href='/admin-panel' class='btn btn-dark' style='margin-top:15px;'>← Yönetim Paneline Dön</a>
+    """
     return render_page("Raporlar", html)
