@@ -6,10 +6,9 @@ import math
 import requests
 import time
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="5.0")
+app = FastAPI(title="Altınköy Otonom Sistem", version="6.0")
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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
-")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 whatsapp_feed = []
@@ -17,8 +16,6 @@ incident_logs = []
 qr_requests = []
 heatmap_data = []
 survey_responses = []
-
-user_cooldowns = {}
 
 DYNAMIC_QRS = {
     "direk-01": {
@@ -47,14 +44,14 @@ DYNAMIC_QRS = {
 STAFF_LIST = [
     {"id": 1, "name": "Onur Yılmaz", "title": "Saha Sorumlusu & Operasyon Amiri", "lat": 39.9334, "lon": 32.8597, "phone": "0537 939 36 77", "zone": "Köy Meydanı"},
     {"id": 2, "name": "Fırat Reis", "title": "Güvenlik & Değirmenler Sorumlusu", "lat": 39.9360, "lon": 32.8520, "phone": "0553 691 57 52", "zone": "Yel ve Su Değirmenleri"},
-    {"id": 3, "name": "Hakan Taşkale", "title": "Çantı Evler & Zanaat Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 61 72", "zone": "Geleneksel Çantı Evler"}
+    {"id": 3, "name": "Ayşe Kaya", "title": "Çantı Evler & Zanaat Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 61 72", "zone": "Geleneksel Çantı Evler"}
 ]
 
 PARK_ZONES = {
     "Köy Meydanı": {"lat": 39.9334, "lon": 32.8597, "desc": "Köy kahvesi, cami, okul, muhtarlık ve bakkalın bulunduğu merkez."},
     "Geleneksel Çantı Evler": {"lat": 39.9300, "lon": 32.8600, "desc": "Çivi çakılmadan yapılan asırlık ahşap çantı evler."},
     "Yel ve Su Değirmenleri": {"lat": 39.9360, "lon": 32.8520, "desc": "Çalışır durumda yel değirmeni, su değirmeni ve dere yatağı alanı."},
-    "Doğa ve Hayvanlar / At Menajı": {"lat": 39.9280, "lon": 32.8630, "desc": "Serbest gezen evcil hayvanlar, at menajı ve yürüyüş yolları."},
+    "Doğa dan Hayvanlar / At Menajı": {"lat": 39.9280, "lon": 32.8630, "desc": "Serbest gezen evcil hayvanlar, at menajı ve yürüyüş yolları."},
     "Eski Meslekler ve Çarşı": {"lat": 39.9320, "lon": 32.8550, "desc": "Kalaycı, nalbant gibi unutulan mesleklerin canlandırıldığı alan."},
     "Ana Giriş & Taş Fırın": {"lat": 39.9310, "lon": 32.8500, "desc": "Müze girişi, otopark ve taş fırın köy ekmeği satış noktası."}
 }
@@ -83,14 +80,30 @@ def find_nearest_zone(lat: float, lon: float) -> str:
             nearest_zone = zone_name
     return nearest_zone
 
-def ask_groq_ai(prompt: str) -> str:
+def ask_groq_ai(prompt: str, lat: float = None, lon: float = None) -> str:
     p_lower = prompt.lower()
+    
+    # Küfür / Hakaret filtresi kontrolü
+    yasakli_kelimeler = ["salak", "aptal", "mal", "rezil", "pis", "idiot", "gerizekalı"]
+    if any(y in p_lower for y in yasakli_kelimeler):
+        return "Müze rehberi olarak bu üslubu kesinlikle kabul etmiyor ve reddediyorum. Lütfen saygılı bir iletişim kurunuz."
+
+    # Konum sorma sorguları kontrolü
+    konum_sorulari = ["neredeyim", "konumum", "burası neresi", "neredeyiz", "hangi bölgedeyim", "konumum neresi"]
+    if any(k in p_lower for k in konum_sorulari):
+        if lat is not None and lon is not None:
+            detected_zone = find_nearest_zone(lat, lon)
+            zone_desc = PARK_ZONES.get(detected_zone, {}).get("desc", "")
+            return f"📍 Mevcut GPS Konumunuza Göre:\nBölgeniz: {detected_zone}\nKoordinatlar: {lat:.4f}, {lon:.4f}\nAçıklama: {zone_desc}"
+        else:
+            return "📍 Konum bilginize şu an tarayıcı üzerinden ulaşılamadı. Lütfen 'Acil Durum & Konum' menüsünü kullanın."
+
     for key, desc in ALTINKOY_LOCATIONS.items():
         if key in p_lower:
             return f"📍 {desc}"
 
     if GROQ_API_KEY == "BURAYA_GROQ_API_KEY_GIRINIZ" or not GROQ_API_KEY:
-        return f"Altınköy Asistanı: '{prompt}' dedin ya, hemen söyleyeyim; bizim işletme kurallarımız gereği dışarıdan yiyecek içecek getirmek, piknik/kahvaltı yapmak ve dere yataklarına girmek kesinlikle yasaktır. Çalışma saatlerimiz Pazartesi hariç 10:00 - 20:00 arasıdır!"
+        return f"Altınköy Asistanı: '{prompt}' talebiniz incelenmiştir. İşletme kurallarımız gereği dışarıdan yiyecek/içecek getirmek, piknik/kahvaltı yapmak ve dere yataklarına girmek kesinlikle yasaktır."
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     payload = {
@@ -99,13 +112,23 @@ def ask_groq_ai(prompt: str) -> str:
             {
                 "role": "system", 
                 "content": (
-                    "Sen Altınköy Açık Hava Müzesi'nin samimi, misafirperver ama kurallardan asla taviz vermeyen kıdemli turist rehberisin. "
-                    "Kuralların: Kısa, net ol. Dışarıdan yiyecek içecek getirmek, piknik/kahvaltı yapmak ve dere yataklarına/su içine girmek kesinlikle yasaktır."
+                    "Sen Altınköy Açık Hava Müzesi'nin kıdemli, profesyonel, akıllı ve adaptif turist rehberisin.\n\n"
+                    "KURALLAR VE DAVRANIŞLAR:\n"
+                    "1. ASLA tek tip, ezbere veya tekrarlayan bir giriş cümlesi (örn. 'Buyur canım...') kullanma. Her yanıtı sorunun içeriğine, bağlamına ve türüne göre özgün bir cümle ile başlat.\n"
+                    "2. ÜSLUP ADAPTASYONU (Ayna Etkisi): Ziyaretçinin konuşma tarzına ve diline tam olarak ayak uydur:\n"
+                    "   - Resmi, mesafeli veya kurumsal soruya -> Soğuk, profesyonel ve resmi yanıt.\n"
+                    "   - Samimi, neşeli veya sıcak soruya -> Sıcak ve misafirperver yanıt.\n"
+                    "3. HAKARET REDDİ: Hakaret veya küfür durumunda kesinlikle alttan alma; mesafeli, net ve sert bir dille bu üslubu reddet.\n"
+                    "4. MÜZE KURALLARI (ASLA TAVİZ VERİLMEZ):\n"
+                    "   - Müzemizde dışarıdan yiyecek ve içecek getirmek yasaktır.\n"
+                    "   - Piknik ve kahvaltı yapmak yasaktır (Köy kahvemiz ve taş fırınımız hizmettedir).\n"
+                    "   - Can güvenliği nedeniyle su değirmeni ve dere yataklarına/sulara girmek kesinlikle yasaktır.\n"
+                    "5. Yanıtların kısa, net, bilgilendirici ve doğrudan soruya yönelik olsun."
                 )
             },
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.5
+        "temperature": 0.4
     }
     try:
         response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=8)
@@ -113,7 +136,7 @@ def ask_groq_ai(prompt: str) -> str:
             return response.json()["choices"][0]["message"]["content"]
     except:
         pass
-    return f"Buyur canım, '{prompt}' dedin ama unutma; müzemizde dışarıdan yiyecek getirmek, piknik/kahvaltı yapmak ve suya girmek yasaktır. Köy kahvemize bekleriz!"
+    return f"Talebiniz alınmıştır. Unutmayın ki müzemizde dışarıdan yiyecek getirmek, piknik/kahvaltı yapmak ve suya girmek kurallar gereği yasaktır."
 
 @app.get("/", response_class=HTMLResponse)
 def home_page(kvkk_session: str = Cookie(None)):
@@ -158,7 +181,6 @@ def logout():
     response.delete_cookie(key="kvkk_session")
     return response
 
-# --- 🎯 ZİYARETÇİLERİN GÖRECEĞİ ŞIK MOBIL ARAYÜZ (ANA EKRAN) ---
 @app.get("/visitor-home", response_class=HTMLResponse)
 def visitor_home():
     return """
@@ -187,7 +209,6 @@ def visitor_home():
     </html>
     """
 
-# --- 📊 MÜDÜR / YÖNETİCİ PANELİ (Sadece yetkililer için gizli bağlantı) ---
 @app.get("/admin-panel", response_class=HTMLResponse)
 def admin_panel():
     return """
@@ -209,7 +230,6 @@ def admin_panel():
     </html>
     """
 
-# --- DİNAMİK DİREK & QR YÖNETİMİ ---
 @app.get("/qr-manager", response_class=HTMLResponse)
 def qr_manager_page(request: Request):
     base_url = str(request.base_url)
@@ -481,7 +501,7 @@ def qr_chat_get():
         <body style="font-family:Segoe UI; padding:20px; background:#fdfbf7;">
             <div style="max-width:550px; margin:auto; background:white; padding:20px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                 <h2 style="color:#d35400;">🎤 Altınköy AI Asistanı & Sesli Tarif</h2>
-                <p style="font-size:12px; color:gray;">Örn: Piknik yapabilir miyim? Kahvaltı getirebilir miyim? Dereye girebilir miyim?</p>
+                <p style="font-size:12px; color:gray;">Örn: "Neredeyim?", "Piknik yapabilir miyim?", "Kahvaltı getirebilir miyim?"</p>
                 <form id="chatForm" action="/api/qr-chat-post" method="POST" onsubmit="askWithLocation(event)">
                     <input type="text" name="message" placeholder="Müze hakkında ne öğrenmek istemiştiniz?" required style="width:100%; padding:12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;"><br>
                     <input type="hidden" id="latField" name="lat" value="39.9334">
@@ -498,7 +518,7 @@ def qr_chat_get():
 
 @app.post("/api/qr-chat-post")
 def qr_chat_post(request: Request, message: str = Form(...), lat: float = Form(39.9334), lon: float = Form(32.8597)):
-    reply = ask_groq_ai(message)
+    reply = ask_groq_ai(message, lat=lat, lon=lon)
     detected_zone = find_nearest_zone(lat, lon)
     heatmap_data.append({"zone": detected_zone, "type": f"Soru: {message[:20]}...", "time": datetime.now().strftime("%H:%M:%S"), "lat": lat, "lon": lon})
     qr_requests.append({"msg": message, "reply": reply})
