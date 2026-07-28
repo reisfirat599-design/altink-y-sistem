@@ -10,7 +10,6 @@ from typing import Optional
 
 app = FastAPI(title="Altınköy Otonom Sistem", version="7.8")
 
-# Yüklenen resimlerin kaydedileceği klasör ve statik bağlantı
 UPLOAD_DIR = "static_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 try:
@@ -18,11 +17,9 @@ try:
 except Exception:
     pass
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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
-")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# Hava Durumu Modülü
 def get_altinkoy_weather() -> dict:
     try:
         return {"temp": "24", "desc": "Güneşli ve Açık", "location": "Altınköy Açık Hava Müzesi"}
@@ -33,7 +30,7 @@ whatsapp_feed = []
 qr_requests = []
 heatmap_data = []
 survey_responses = []
-latest_emergency = None  # Sesli bildirim için son acil durum verisi
+latest_emergency = None
 
 ALTINKOY_CENTER_LAT = 39.9334
 ALTINKOY_CENTER_LON = 32.8597
@@ -47,7 +44,7 @@ DYNAMIC_QRS = {
 STAFF_LIST = [
     {"id": 1, "name": "Onur Yılmaz", "title": "Saha Sorumlusu & Operasyon Amiri", "lat": 39.9334, "lon": 32.8597, "phone": "0537 939 36 77", "zone": "Köy Meydanı"},
     {"id": 2, "name": "Fırat Reis", "title": "Güvenlik & Değirmenler Sorumlusu", "lat": 39.9360, "lon": 32.8520, "phone": "0553 691 57 52", "zone": "Yel ve Su Değirmenleri"},
-    {"id": 3, "name": "Ayşe Kaya", "title": "Çantı Evler Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 61 72", "zone": "Geleneksel Çantı Evler"}
+    {"id": 3, "name": "Hakan Taşkale", "title": "Çantı Evler Sorumlusu", "lat": 39.9300, "lon": 32.8600, "phone": "0546 801 31 72", "zone": "Geleneksel Çantı Evler"}
 ]
 
 PARK_ZONES = {
@@ -257,7 +254,6 @@ def redirect_dynamic_qr(code_id: str, kvkk_session: Optional[str] = Cookie(None)
         q = DYNAMIC_QRS[code_id]
         heatmap_data.append({"zone": q["zone"], "type": f"QR Okutuldu ({code_id})", "time": datetime.now().strftime("%H:%M"), "lat": q["lat"], "lon": q["lon"]})
         
-        # QR okutulduğunda tarayıcı hafızasına direk koordinatlarını kaydeden özel bir arayüz/yönlendirme yapalım
         target = q["target_url"]
         return HTMLResponse(f"""
         <html>
@@ -390,7 +386,6 @@ def visitor_portal(kvkk_session: Optional[str] = Cookie(None)):
         window.onload = function() {
             updateOnlineStatus();
             
-            // QR direğinden kaydedilen konumu kontrol et
             const savedLat = localStorage.getItem('last_scanned_lat');
             const savedLon = localStorage.getItem('last_scanned_lon');
             const savedZone = localStorage.getItem('last_scanned_zone');
@@ -427,7 +422,6 @@ def visitor_portal(kvkk_session: Optional[str] = Cookie(None)):
                 return;
             }
 
-            // İnternet varsa form direkt gönderilir (Direk konumu hidden inputta hazır)
             document.getElementById('emergencyForm').submit();
         }
 
