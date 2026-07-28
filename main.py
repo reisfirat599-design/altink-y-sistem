@@ -17,7 +17,7 @@ try:
 except Exception:
     pass
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "gsk_3dEngysSeOYt8oZQmizUMgdyb3FYUnC1K08FNfJCx9acORIRly6RQ")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def get_altinkoy_weather() -> dict:
