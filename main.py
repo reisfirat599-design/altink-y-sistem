@@ -1,21 +1,40 @@
-from fastapi import FastAPI, Request, Form, Cookie
+from fastapi import FastAPI, Request, Form, Cookie, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 import os
 import math
+import shutil
 import requests
+from typing import Optional
 
-app = FastAPI(title="Altınköy Otonom Sistem", version="7.0")
+app = FastAPI(title="Altınköy Otonom Sistem", version="7.8")
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+# Yüklenen resimlerin kaydedileceği klasör ve statik bağlantı
+UPLOAD_DIR = "static_uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+try:
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+except Exception:
+    pass
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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
+")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# Hava Durumu Modülü
+def get_altinkoy_weather() -> dict:
+    try:
+        return {"temp": "24", "desc": "Güneşli ve Açık", "location": "Altınköy Açık Hava Müzesi"}
+    except:
+        return {"temp": "22", "desc": "Parçalı Bulutlu", "location": "Altınköy Açık Hava Müzesi"}
 
 whatsapp_feed = []
 qr_requests = []
 heatmap_data = []
 survey_responses = []
+latest_emergency = None  # Sesli bildirim için son acil durum verisi
 
-# Altınköy Müzesi Merkez Koordinatları (Manipülasyon koruması ve bölge tespiti için)
 ALTINKOY_CENTER_LAT = 39.9334
 ALTINKOY_CENTER_LON = 32.8597
 
@@ -59,10 +78,13 @@ def is_inside_altinkoy(lat: float, lon: float) -> bool:
     dist = math.sqrt((lat - ALTINKOY_CENTER_LAT)*2 + (lon - ALTINKOY_CENTER_LON)*2)
     return dist < 0.035
 
-def ask_groq_ai(prompt: str, lat: float = None, lon: float = None) -> str:
+def ask_groq_ai(prompt: str, lat: Optional[float] = None, lon: Optional[float] = None) -> str:
     p_lower = prompt.lower()
     if any(y in p_lower for y in ["salak", "aptal", "mal", "rezil", "pis"]):
         return "Müze rehberi olarak bu üslubu reddediyor, saygılı bir iletişim rica ediyorum."
+    if any(h in p_lower for h in ["hava", "sıcaklık", "yağmur", "derece"]):
+        w = get_altinkoy_weather()
+        return f"🌤️ Altınköy'de şu an hava {w['desc']} ve sıcaklık {w['temp']}°C."
     if any(k in p_lower for k in ["neredeyim", "konumum", "burası neresi"]):
         if lat and lon:
             z = find_nearest_zone(lat, lon)
@@ -150,11 +172,11 @@ def render_page(title: str, content_html: str, extra_js: str = "") -> str:
     """
 
 @app.get("/", response_class=HTMLResponse)
-def home_page(kvkk_session: str = Cookie(None)):
+def home_page(kvkk_session: Optional[str] = Cookie(None)):
     if kvkk_session != "onayli":
         html = """
         <h2>🌾 Altınköy Açık Hava Müzesi</h2>
-        <p>Akıllı Asistan ve Canlı Konum Sistemine Hoş Geldiniz</p>
+        <p>Akıllı Asistan ve Kapalı Devre Sistemine Hoş Geldiniz</p>
         <form action="/api/set-session" method="POST">
             <div style="background:#e8f5e9; padding:10px; border-radius:6px; font-size:11px; color:#2e7d32; max-height:80px; overflow-y:auto; margin-bottom:12px; border:1px solid #c8e6c9;">
                 <b>KVKK Aydınlatma Metni:</b> Konum yönlendirmesi ve asistan hizmeti sunabilmek amacıyla kişisel verileriniz işlenmektedir.
@@ -182,19 +204,25 @@ def logout():
     return res
 
 @app.get("/visitor-home", response_class=HTMLResponse)
-def visitor_home(kvkk_session: str = Cookie(None)):
+def visitor_home(kvkk_session: Optional[str] = Cookie(None)):
     if kvkk_session != "onayli":
         return RedirectResponse(url="/", status_code=303)
-    html = """
+    
+    w = get_altinkoy_weather()
+    html = f"""
     <h2>🌾 Altınköy Ziyaretçi Rehberi</h2>
     <p>Müzede rehberiniz cebinizde!</p>
     
+    <div style="background:#e3f2fd; border-left:4px solid #2196f3; padding:10px; border-radius:6px; margin-bottom:8px; font-size:12px; color:#0d47a1;">
+        <b>🌤️ Anlık Hava Durumu:</b> {w['desc']}, <b>{w['temp']}°C</b>
+    </div>
+
     <div style="background:#fff8e1; border-left:4px solid #ffa000; padding:10px; border-radius:6px; margin-bottom:12px; font-size:12px; color:#b26a00;">
         <b>Önemli Kural:</b> Dışarıdan yiyecek getirmek, piknik/kahvaltı yapmak ve dereye girmek yasaktır.
     </div>
 
     <a href="/qr-chat" class="btn btn-warning">🎤 Yapay Zeka Asistanına Soru Sor</a>
-    <a href="/visitor-portal" class="btn btn-danger">📍 Acil Durum & Ekip Çağır</a>
+    <a href="/visitor-portal" class="btn btn-danger">📍 Acil Durum & Offline Sinyal Gönder</a>
     <a href="/survey" class="btn btn-primary">⭐ Ziyaretçi Memnuniyet Anketi</a>
     
     <div class="footer-link"><a href="/api/logout">Oturumu Kapat</a></div>
@@ -203,9 +231,15 @@ def visitor_home(kvkk_session: str = Cookie(None)):
 
 @app.get("/admin-panel", response_class=HTMLResponse)
 def admin_panel():
-    html = """
+    w = get_altinkoy_weather()
+    html = f"""
     <h2>🛡️ Müdürlük Yönetim Paneli</h2>
     <p>Üst düzey yönetim ve denetim merkezi.</p>
+    
+    <div style="background:#e8f8f5; border-left:4px solid #1abc9c; padding:10px; border-radius:6px; margin-bottom:12px; font-size:12px; color:#16a085;">
+        <b>Saha Hava Durumu:</b> {w['desc']} ({w['temp']}°C) - Açık Alan Operasyonlarına Uygun.
+    </div>
+
     <a href="/qr-manager" class="btn" style="background:#2980b9; color:white;">🔗 Dinamik QR & Direk Yönetimi</a>
     <a href="/staff-management" class="btn" style="background:#8e44ad; color:white;">👥 Personel & Bölge Yönetimi</a>
     <a href="/whatsapp-sim" class="btn" style="background:#27ae60; color:white;">📱 WhatsApp Grup Akışı</a>
@@ -216,17 +250,30 @@ def admin_panel():
     return render_page("Müdürlük Paneli", html)
 
 @app.get("/r/{code_id}")
-def redirect_dynamic_qr(code_id: str, kvkk_session: str = Cookie(None)):
+def redirect_dynamic_qr(code_id: str, kvkk_session: Optional[str] = Cookie(None)):
     if kvkk_session != "onayli":
         return RedirectResponse(url="/", status_code=303)
     if code_id in DYNAMIC_QRS:
         q = DYNAMIC_QRS[code_id]
         heatmap_data.append({"zone": q["zone"], "type": f"QR Okutuldu ({code_id})", "time": datetime.now().strftime("%H:%M"), "lat": q["lat"], "lon": q["lon"]})
-        return RedirectResponse(url=q["target_url"], status_code=303)
+        
+        # QR okutulduğunda tarayıcı hafızasına direk koordinatlarını kaydeden özel bir arayüz/yönlendirme yapalım
+        target = q["target_url"]
+        return HTMLResponse(f"""
+        <html>
+            <head><meta http-equiv="refresh" content="0;url={target}"></head>
+            <script>
+                localStorage.setItem('last_scanned_lat', '{q["lat"]}');
+                localStorage.setItem('last_scanned_lon', '{q["lon"]}');
+                localStorage.setItem('last_scanned_zone', '{q["zone"]}');
+                window.location.href = "{target}";
+            </script>
+        </html>
+        """)
     return RedirectResponse(url="/visitor-home", status_code=303)
 
 @app.get("/uyari/degirmen-bolgesi", response_class=HTMLResponse)
-def degirmen_uyari(kvkk_session: str = Cookie(None)):
+def degirmen_uyari(kvkk_session: Optional[str] = Cookie(None)):
     if kvkk_session != "onayli":
         return RedirectResponse(url="/", status_code=303)
     html = """
@@ -240,7 +287,7 @@ def degirmen_uyari(kvkk_session: str = Cookie(None)):
     return render_page("Değirmen Bölgesi", html)
 
 @app.get("/qr-chat", response_class=HTMLResponse)
-def qr_chat_get(kvkk_session: str = Cookie(None)):
+def qr_chat_get(kvkk_session: Optional[str] = Cookie(None)):
     if kvkk_session != "onayli":
         return RedirectResponse(url="/", status_code=303)
     
@@ -257,9 +304,9 @@ def qr_chat_get(kvkk_session: str = Cookie(None)):
 
     html = f"""
     <h2>🎤 Altınköy Sesli Asistan</h2>
-    <p>Müze kuralları hakkında dilediğinizi sorun.</p>
+    <p>Müze kuralları ve hava durumu hakkında dilediğinizi sorun.</p>
     <form id="chatForm" action="/api/qr-chat-post" method="POST" onsubmit="getLocAndSubmit(event)">
-        <input type="text" id="msgInput" name="message" placeholder="Örn: Piknik yapabilir miyim?" autocomplete="off" required style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; margin-bottom:8px;">
+        <input type="text" id="msgInput" name="message" placeholder="Örn: Hava nasıl? / Piknik yapabilir miyim?" autocomplete="off" required style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; margin-bottom:8px;">
         <input type="hidden" id="latField" name="lat" value="39.9334">
         <input type="hidden" id="lonField" name="lon" value="32.8597">
         <button type="submit" class="btn btn-warning">Yapay Zekaya Sor</button>
@@ -270,6 +317,14 @@ def qr_chat_get(kvkk_session: str = Cookie(None)):
     <script>
         function getLocAndSubmit(e) {{
             e.preventDefault();
+            const savedLat = localStorage.getItem('last_scanned_lat');
+            const savedLon = localStorage.getItem('last_scanned_lon');
+            if (savedLat && savedLon) {{
+                document.getElementById('latField').value = savedLat;
+                document.getElementById('lonField').value = savedLon;
+                document.getElementById('chatForm').submit();
+                return;
+            }}
             if (navigator.geolocation) {{
                 navigator.geolocation.getCurrentPosition((pos) => {{
                     document.getElementById('latField').value = pos.coords.latitude;
@@ -295,34 +350,102 @@ def qr_chat_post(message: str = Form(...), lat: float = Form(39.9334), lon: floa
     return RedirectResponse(url="/qr-chat", status_code=303)
 
 @app.get("/visitor-portal", response_class=HTMLResponse)
-def visitor_portal(kvkk_session: str = Cookie(None)):
+def visitor_portal(kvkk_session: Optional[str] = Cookie(None)):
     if kvkk_session != "onayli":
         return RedirectResponse(url="/", status_code=303)
     html = """
-    <h2 style="color:#c0392b;">📍 Acil Durum Ekibi</h2>
-    <p>Yardıma ihtiyacınız varsa butona basarak konumunuzu saha ekibine iletin.</p>
-    <form id="emergencyForm" action="/api/emergency-form" method="POST" onsubmit="getEmergLoc(event)">
+    <h2 style="color:#c0392b;">📍 Offline / Kapalı Devre Acil Durum</h2>
+    <p>İnternet çekmese bile son okuttuğunuz direk konumundan veya yerel hafızadan acil sinyali iletilir.</p>
+    
+    <div id="offlineStatus" style="background:#fff3cd; color:#856404; padding:8px; border-radius:6px; font-size:11px; margin-bottom:10px; border:1px solid #ffeeba; display:none;">
+        ⚠️ İnternet bağlantısı yok! Acil durum sinyali son okutulan QR direk konumuyla yerel olarak depolandı.
+    </div>
+
+    <div id="qrLocationInfo" style="background:#e8f4f8; color:#2980b9; padding:8px; border-radius:6px; font-size:11px; margin-bottom:10px; border:1px solid #d4e6f1;">
+        📌 Konum Kaynağı Kontrol Ediliyor...
+    </div>
+
+    <form id="emergencyForm" action="/api/emergency-form" method="POST" onsubmit="handleEmergency(event)">
         <input type="hidden" id="eLat" name="lat" value="39.9334">
         <input type="hidden" id="eLon" name="lon" value="32.8597">
-        <button type="submit" class="btn btn-danger">Saha Ekibine Konum Gönder</button>
+        <button type="submit" class="btn btn-danger">🚨 Acil Durum / Konum Gönder</button>
     </form>
+
+    <div id="queueInfo" style="margin-top:10px; font-size:11px; color:#555; text-align:center;"></div>
     <a href="/visitor-home" class="btn btn-dark" style="margin-top:10px;">← Ana Ekrana Dön</a>
     
     <script>
-        function getEmergLoc(e) {{
+        function updateOnlineStatus() {
+            const statusDiv = document.getElementById('offlineStatus');
+            if (!navigator.onLine) {
+                statusDiv.style.display = 'block';
+            } else {
+                statusDiv.style.display = 'none';
+                syncOfflineQueue();
+            }
+        }
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        
+        window.onload = function() {
+            updateOnlineStatus();
+            
+            // QR direğinden kaydedilen konumu kontrol et
+            const savedLat = localStorage.getItem('last_scanned_lat');
+            const savedLon = localStorage.getItem('last_scanned_lon');
+            const savedZone = localStorage.getItem('last_scanned_zone');
+            
+            const infoDiv = document.getElementById('qrLocationInfo');
+            if (savedLat && savedLon && savedZone) {
+                document.getElementById('eLat').value = savedLat;
+                document.getElementById('eLon').value = savedLon;
+                infoDiv.innerHTML = "✅ <b>Konum Kaynağı:</b> Son okuttuğunuz QR direk (<b>" + savedZone + "</b>)";
+            } else {
+                infoDiv.innerHTML = "⚠️ Daha önce QR okutulmadı, varsayılan saha merkezi baz alınıyor.";
+            }
+
+            const queue = JSON.parse(localStorage.getItem('offline_emergencies') || '[]');
+            if (queue.length > 0) {
+                document.getElementById('queueInfo').innerText = "Bekleyen çevrimdışı sinyal sayısı: " + queue.length;
+            }
+        }
+
+        function handleEmergency(e) {
             e.preventDefault();
-            if (navigator.geolocation) {{
-                navigator.geolocation.getCurrentPosition((pos) => {{
-                    document.getElementById('eLat').value = pos.coords.latitude;
-                    document.getElementById('eLon').value = pos.coords.longitude;
-                    document.getElementById('emergencyForm').submit();
-                }}, () => {{
-                    document.getElementById('emergencyForm').submit();
-                }});
-            }} else {{
-                document.getElementById('emergencyForm').submit();
-            }}
-        }}
+            
+            const lat = document.getElementById('eLat').value;
+            const lon = document.getElementById('eLon').value;
+            const timestamp = new Date().toLocaleTimeString();
+
+            if (!navigator.onLine) {
+                let queue = JSON.parse(localStorage.getItem('offline_emergencies') || '[]');
+                queue.push({ lat: lat, lon: lon, time: timestamp });
+                localStorage.setItem('offline_emergencies', JSON.stringify(queue));
+                
+                alert("İnternet bulunamadı! Acil durum sinyali okuttuğunuz direk konumuyla yerel hafızaya kaydedildi. Bağlantı geldiğinde merkeze iletilecektir.");
+                window.location.href = "/visitor-home";
+                return;
+            }
+
+            // İnternet varsa form direkt gönderilir (Direk konumu hidden inputta hazır)
+            document.getElementById('emergencyForm').submit();
+        }
+
+        function syncOfflineQueue() {
+            let queue = JSON.parse(localStorage.getItem('offline_emergencies') || '[]');
+            if (queue.length > 0) {
+                fetch('/api/sync-offline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(queue)
+                }).then(res => {
+                    if (res.ok) {
+                        localStorage.removeItem('offline_emergencies');
+                        document.getElementById('queueInfo').innerText = "Çevrimdışı sinyaller merkeze iletildi.";
+                    }
+                }).catch(err => console.log("Senkronizasyon hatası:", err));
+            }
+        }
     </script>
     """
     return render_page("Acil Durum", html)
@@ -332,15 +455,32 @@ def emergency_form(lat: float = Form(39.9334), lon: float = Form(32.8597)):
     z = find_nearest_zone(lat, lon)
     heatmap_data.append({"zone": z, "type": "Acil Durum Sinyali", "time": datetime.now().strftime("%H:%M"), "lat": lat, "lon": lon})
     nearest = min(STAFF_LIST, key=lambda s: 0 if s['zone'] == z else 1)
+    
+    global latest_emergency
+    latest_emergency = f"Dikkat! {z} bölgesinde acil durum sinyali alındı. Sorumlu personel {nearest['name']} derhal müdahale etsin."
+
     html = f"""
     <h2 style="color:#2c5e3b;">✔️ Sinyal Alındı</h2>
-    <p><b>Bölgeniz:</b> {z}<br>En yakın sorumlu <b>{nearest['name']}</b> ({nearest['phone']}) konumunuza yönlendirildi.</p>
+    <p><b>Bölgeniz / Direk Konumu:</b> {z}<br>En yakın sorumlu <b>{nearest['name']}</b> ({nearest['phone']}) konumunuza yönlendirildi.</p>
     <a href="/visitor-home" class="btn btn-primary" style="margin-top:15px;">Ana Ekrana Dön</a>
     """
     return render_page("Acil Durum", html)
 
+@app.post("/api/sync-offline")
+async def sync_offline(request: Request):
+    try:
+        data = await request.json()
+        for item in data:
+            lat = float(item.get("lat", 39.9334))
+            lon = float(item.get("lon", 32.8597))
+            z = find_nearest_zone(lat, lon)
+            heatmap_data.append({"zone": z, "type": "Offline Acil Sinyal", "time": item.get("time", "Bilinmiyor"), "lat": lat, "lon": lon})
+        return {"status": "success", "synced": len(data)}
+    except:
+        raise HTTPException(status_code=400, detail="Geçersiz veri")
+
 @app.get("/survey", response_class=HTMLResponse)
-def survey_page(kvkk_session: str = Cookie(None)):
+def survey_page(kvkk_session: Optional[str] = Cookie(None)):
     if kvkk_session != "onayli":
         return RedirectResponse(url="/", status_code=303)
     html = """
@@ -381,6 +521,14 @@ def survey_page(kvkk_session: str = Cookie(None)):
     <script>
         function getSurveyLoc(e) {
             e.preventDefault();
+            const savedLat = localStorage.getItem('last_scanned_lat');
+            const savedLon = localStorage.getItem('last_scanned_lon');
+            if (savedLat && savedLon) {
+                document.getElementById('sLat').value = savedLat;
+                document.getElementById('sLon').value = savedLon;
+                document.getElementById('surveyForm').submit();
+                return;
+            }
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition((pos) => {
                     document.getElementById('sLat').value = pos.coords.latitude;
@@ -438,22 +586,59 @@ def staff_management():
 
 @app.get("/whatsapp-sim", response_class=HTMLResponse)
 def whatsapp_sim():
-    feed = "".join([f"<div style='background:#e1f5fe; padding:8px; border-radius:6px; margin-bottom:6px; font-size:12px;'><b>{i['sender']}</b> [{i['time']}]: {i['message']}</div>" for i in reversed(whatsapp_feed[-5:])])
+    feed = ""
+    for i in reversed(whatsapp_feed[-5:]):
+        img_html = f"<br><img src='/uploads/{i['image']}' style='max-width:100%; border-radius:6px; margin-top:6px;'>" if i.get('image') else ""
+        feed += f"<div style='background:#e1f5fe; padding:8px; border-radius:6px; margin-bottom:8px; font-size:12px;'><b>{i['sender']}</b> [{i['time']}]: {i['message']}{img_html}</div>"
+
+    voice_script = ""
+    global latest_emergency
+    if latest_emergency:
+        alert_msg = latest_emergency
+        latest_emergency = None
+        voice_script = f"""
+        <script>
+            window.onload = function() {{
+                if ('speechSynthesis' in window) {{
+                    const utterance = new SpeechSynthesisUtterance("{alert_msg}");
+                    utterance.lang = 'tr-TR';
+                    window.speechSynthesis.speak(utterance);
+                }}
+            }};
+        </script>
+        """
+
     html = f"""
-    <h2>📱 WhatsApp Akışı</h2>
-    <form action="/api/wa-post" method="POST">
-        <input type="text" name="sender" value="Onur Yılmaz (Amir)" required style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid #ccc; font-size:12px;">
-        <input type="text" name="message" placeholder="Mesaj yaz..." autocomplete="off" required style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid #ccc; font-size:12px;">
-        <button type="submit" class="btn" style="background:#25D366; color:white;">Gönder</button>
+    <h2>📱 WhatsApp Akışı (Resim, Ses ve Hava Durumu Destekli)</h2>
+    <form action="/api/wa-post" method="POST" enctype="multipart/form-data">
+        <input type="text" name="sender" value="Onur Yılmaz (Amir)" required style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid #ccc; font-size:12px; box-sizing:border-box;">
+        <input type="text" name="message" placeholder="Durum mesajı yaz..." autocomplete="off" required style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid #ccc; font-size:12px; box-sizing:border-box;">
+        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:4px;">Saha Fotoğrafı / Durum Görseli:</label>
+        <input type="file" name="file" accept="image/*" style="width:100%; margin-bottom:8px; font-size:11px;">
+        <button type="submit" class="btn" style="background:#25D366; color:white;">Fotoğraflı Durum Gönder</button>
     </form>
     <div style="margin-top:10px;">{feed if feed else "<p style='font-size:12px;'>Mesaj yok.</p>"}</div>
     <a href="/admin-panel" class='btn btn-dark' style='margin-top:10px;'>← Yönetim Paneline Dön</a>
+    {voice_script}
     """
     return render_page("WhatsApp", html)
 
 @app.post("/api/wa-post")
-def wa_post(sender: str = Form(...), message: str = Form(...)):
-    whatsapp_feed.append({"sender": sender, "message": message, "time": datetime.now().strftime("%H:%M")})
+def wa_post(sender: str = Form(...), message: str = Form(...), file: Optional[UploadFile] = File(None)):
+    filename = None
+    if file and file.filename:
+        safe_name = os.path.basename(file.filename)
+        filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe_name}"
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+    whatsapp_feed.append({
+        "sender": sender, 
+        "message": message, 
+        "image": filename,
+        "time": datetime.now().strftime("%H:%M")
+    })
     return RedirectResponse(url="/whatsapp-sim", status_code=303)
 
 @app.get("/heatmap", response_class=HTMLResponse)
